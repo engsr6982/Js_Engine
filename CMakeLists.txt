@@ -51,6 +51,8 @@ file(GLOB_RECURSE SOURCE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Engine/*.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/API/*.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/API/*.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Loader/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Loader/*.cc"
 )
 
 endstone_add_plugin(${PROJECT_NAME} ${SOURCE_FILES})
@@ -60,8 +62,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 target_include_directories(${PROJECT_NAME} PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Engine
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/API
 )
 
 # 全局设置 MSVC 运行时库
