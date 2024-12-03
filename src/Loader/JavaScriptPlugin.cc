@@ -1,7 +1,4 @@
 #include "JavaScriptPlugin.h"
-#include "Engine/EngineManager.h"
-#include "Engine/EngineSelfData.h"
-#include "Engine/Using.h"
 #include "Entry.h"
 #include "endstone/command/console_command_sender.h"
 #include "endstone/command/plugin_command.h"

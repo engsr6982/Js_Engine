@@ -21,8 +21,8 @@ target("Js_Engine")
     add_cxflags(
         "/EHa",
         "/utf-8",
-        "/sdl",
-        "/W4"
+        "/W4",
+        "/sdl"
     )
     add_defines(
         "NOMINMAX",
@@ -54,20 +54,18 @@ target("Js_Engine")
     add_defines("ENTT_SPARSE_PAGE=2048")
     add_defines("ENTT_PACKED_PAGE=128")
 
-    add_defines(
-        "SCRIPTX_BACKEND_QUICKJS",
-        "SCRIPTX_BACKEND_TRAIT_PREFIX=../third-party/scriptx/backend/QuickJs/trait/Trait"
-    )
-    add_files(
-        "third-party/scriptx/backend/QuickJs/**.cc",
-        "third-party/scriptx/src/**.cc"
-    )
+    -- NodeJs
+    add_links("third-party/nodejs/lib/libnode.lib")
     add_includedirs(
-        "third-party/scriptx/src/include",
-        "third-party/quickjs/include"
+        "third-party/nodejs/include",
+        "third-party/nodejs/include/v8",
+        "third-party/nodejs/include/uv"
     )
-    add_links("third-party/quickjs/lib/quickjs.lib")
-    -- add_links("ucrt", "vcruntime", "msvcrt", "legacy_stdio_definitions") -- QuickJs C运行时库
+    -- Puerts
+    add_includedirs(
+        "node_modules/puerts/puerts_libs/include"
+    )
+    add_links("node_modules/puerts/puerts_libs/src/*.c")
 
     if is_mode("debug") then
         add_defines("DEBUG")

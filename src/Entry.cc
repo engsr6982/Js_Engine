@@ -1,26 +1,22 @@
 #include "Entry.h"
-#include "API/APIHelper.h"
-#include "Engine/EngineManager.h"
-#include "Engine/Using.h"
 #include "Loader/JavaScriptPlugin.h"
 #include "Loader/JavaScriptPluginLoader.h"
 #include "endstone/detail/logger_factory.h"
 #include "endstone/detail/plugin/plugin_manager.h"
 #include "endstone/detail/server.h"
 #include "endstone/plugin/plugin_manager.h"
-#include "entt/entt.hpp"
-#include "entt/locator/locator.hpp"
 #include <filesystem>
 #include <memory>
 #include <utility>
-#include <vector>
 
 
 ENDSTONE_PLUGIN("js_engine", "0.1.0", Entry) { description = "JavaScript Engine"; }
 
+
 // Entry *__Entry = new Entry();
 Entry* __Entry = nullptr;
 Entry* GetEntry() { return __Entry; }
+
 
 using endstone::detail::EndstoneServer;
 void Entry::onLoad() {

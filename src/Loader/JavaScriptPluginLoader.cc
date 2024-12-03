@@ -3,7 +3,10 @@
 #include "JavaScriptPlugin.h"
 #include "endstone/detail/server.h"
 #include "fmt/format.h"
+#include "nlohmann/json.hpp"
+#include "nlohmann/json_fwd.hpp"
 #include <filesystem>
+
 
 namespace jse {
 namespace fs = std::filesystem;
@@ -13,24 +16,71 @@ JavaScriptPluginLoader::JavaScriptPluginLoader(endstone::Server& server) : Plugi
 std::vector<endstone::Plugin*> JavaScriptPluginLoader::loadPlugins(const std::string& directory) {
     std::vector<endstone::Plugin*> plugins;
 
+    // NodeJs & package.json
     try {
         fs::path dir(directory);
         if (!fs::exists(dir)) {
             return plugins;
         }
 
-        // 遍历目录查找.js文件
-        for (const auto& entry : fs::directory_iterator(dir)) {
-            if (entry.path().extension() == ".js") {
-                if (auto plugin = loadPlugin(entry.path())) {
+        auto dirs = fs::recursive_directory_iterator(dir);
+        for (const auto& entry : dirs) {
+            // find package.json
+            if (entry.path().filename() != "package.json") {
+                continue;
+            }
+
+            // load package.json
+            try {
+                nlohmann::json package;
+                std::ifstream  file(entry.path());
+                file >> package;
+                file.close();
+
+                // try to load plugin
+                if (!package.contains("main")) {
+                    GetEntry()->getLogger().error(fmt::format("No main field in package.json: {}", entry.path()));
+                    continue;
+                }
+
+                auto main = package["main"];
+                if (!main.is_string()) {
+                    GetEntry()->getLogger().error(
+                        fmt::format("Main field in package.json is not a string: {}", entry.path())
+                    );
+                    continue;
+                }
+
+                fs::path mainPath = entry.path() / main;
+                if (!fs::exists(mainPath) || mainPath.extension() != ".js") {
+                    GetEntry()->getLogger().error(fmt::format("Main file does not exist: {}", mainPath));
+                    continue;
+                }
+
+                // load plugin
+                if (auto plugin = loadPlugin(mainPath)) {
                     plugins.push_back(plugin);
                 }
+            } catch (nlohmann::json::parse_error& e) {
+                GetEntry()->getLogger().error(fmt::format("Error occurred while parsing package.json: {}", e.what()));
+                continue;
+            } catch (std::exception& e) {
+                GetEntry()->getLogger().error(fmt::format("Error occurred while parsing package.json: {}", e.what()));
+                continue;
+            } catch (...) {
+                GetEntry()->getLogger().error(fmt::format("Error occurred while parsing package.json: Unknown error"));
+                continue;
             }
         }
 
-    } catch (const std::exception& e) {
+
+    } catch (std::exception& e) {
         GetEntry()->getLogger().error(
             fmt::format("Error occurred while loading plugins from '{}': {}", directory, e.what())
+        );
+    } catch (...) {
+        GetEntry()->getLogger().error(
+            fmt::format("Error occurred while loading plugins from '{}': Unknown error", directory)
         );
     }
 
@@ -75,6 +125,8 @@ endstone::Plugin* JavaScriptPluginLoader::loadPlugin(const fs::path& file) {
     //     GetEntry()->getLogger().error(fmt::format("Failed to load plugin '{}': Unknown error", file.string()));
     //     return nullptr;
     // }
+
+    return nullptr;
 }
 
 void JavaScriptPluginLoader::enablePlugin(endstone::Plugin& plugin) const { PluginLoader::enablePlugin(plugin); }
