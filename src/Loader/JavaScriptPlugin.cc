@@ -1,6 +1,4 @@
 #include "JavaScriptPlugin.h"
-
-#include "API/APIHelper.h"
 #include "Engine/EngineManager.h"
 #include "Engine/EngineSelfData.h"
 #include "Engine/Using.h"
@@ -57,9 +55,8 @@ endstone::PluginDescription createPluginDescription(
     };
 }
 
-JavaScriptPlugin::JavaScriptPlugin(int engineId, string const& name, string const& version, string const& description)
-: engineId_(engineId),
-  description_(createPluginDescription(
+JavaScriptPlugin::JavaScriptPlugin(std::string const& name, std::string const& version, std::string const& description)
+: description_(createPluginDescription(
       name,
       version,
       description,
@@ -77,62 +74,18 @@ JavaScriptPlugin::JavaScriptPlugin(int engineId, string const& name, string cons
       std::nullopt
   )) {}
 
-JavaScriptPlugin::~JavaScriptPlugin() { EngineManager::getInstance().destroyEngine(this->engineId_); }
+JavaScriptPlugin::~JavaScriptPlugin() {}
 
 void JavaScriptPlugin::onLoad() {
-    auto engine = EngineManager::getInstance().getEngine(this->engineId_);
-    if (!engine) {
-        if (GetEntry())
-            GetEntry()->getLogger().error(fmt::format("Failed to get JS engine for plugin '{}'", this->getName()));
-    }
-    EngineScope scope(engine);
-
-    try {
-        auto data = ENGINE_SELF_DATA();
-        if (!data->mJSE_Plugin.callOnLoad() && GetEntry()) {
-            GetEntry()->getLogger().warning(fmt::format("Plugin '{}' does not have an onLoad function", this->getName())
-            );
-        }
-    }
-    CatchNotReturn;
+    // TODO: Implement
 }
 
 void JavaScriptPlugin::onEnable() {
-    auto engine = EngineManager::getInstance().getEngine(this->engineId_);
-    if (!engine) {
-        if (GetEntry())
-            GetEntry()->getLogger().error(fmt::format("Failed to get JS engine for plugin '{}'", this->getName()));
-    }
-    EngineScope scope(engine);
-
-    try {
-        auto data = ENGINE_SELF_DATA();
-        if (!data->mJSE_Plugin.callOnEnable() && GetEntry()) {
-            GetEntry()->getLogger().warning(
-                fmt::format("Plugin '{}' does not have an onEnable function", this->getName())
-            );
-        }
-    }
-    CatchNotReturn;
+    // TODO: Implement
 }
 
 void JavaScriptPlugin::onDisable() {
-    auto engine = EngineManager::getInstance().getEngine(this->engineId_);
-    if (!engine) {
-        if (GetEntry())
-            GetEntry()->getLogger().error(fmt::format("Failed to get JS engine for plugin '{}'", this->getName()));
-    }
-    EngineScope scope(engine);
-
-    try {
-        auto data = ENGINE_SELF_DATA();
-        if (!data->mJSE_Plugin.callOnDisable() && GetEntry()) {
-            GetEntry()->getLogger().warning(
-                fmt::format("Plugin '{}' does not have an onDisable function", this->getName())
-            );
-        }
-    }
-    CatchNotReturn;
+    // TODO: Implement
 }
 
 endstone::PluginDescription const& JavaScriptPlugin::getDescription() const { return this->description_; }
