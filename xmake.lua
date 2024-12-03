@@ -63,7 +63,8 @@ target("Js_Engine")
     )
     -- Puerts
     add_includedirs(
-        "node_modules/puerts/puerts_libs/include"
+        "node_modules/puerts/puerts_libs/include",
+        "node_modules/puerts/src"
     )
     add_links("node_modules/puerts/puerts_libs/src/*.c")
 

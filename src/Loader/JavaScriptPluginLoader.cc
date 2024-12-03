@@ -126,6 +126,9 @@ endstone::Plugin* JavaScriptPluginLoader::loadPlugin(const fs::path& file) {
     //     return nullptr;
     // }
 
+    // NodeJS
+
+
     return nullptr;
 }
 
