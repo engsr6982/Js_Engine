@@ -4,6 +4,7 @@
 #include "Entry.h"
 #include "JavaScriptPlugin.h"
 #include "NodeHelper.h"
+#include "ScriptBackend.hpp"
 #include "endstone/detail/server.h"
 #include "fmt/format.h"
 #include "nlohmann/json.hpp"
@@ -37,8 +38,19 @@ public:
     int X;
 };
 
-UsingCppType(TestClass);
+class TestB {
+public:
+    TestClass* p;
 
+    TestB(TestClass* p) { std::cout << "TestB(" << p->X << ")" << std::endl; }
+
+    static void Print(TestClass* p) { std::cout << "TestB::Print(" << p->X << ")" << std::endl; }
+
+    TestClass* GetP() { return p; }
+};
+
+UsingCppType(TestClass);
+UsingCppType(TestB);
 
 namespace jse {
 namespace fs = std::filesystem;
@@ -188,20 +200,11 @@ endstone::Plugin* JavaScriptPluginLoader::loadPlugin(const fs::path& file) {
             .Method("Add", MakeFunction(&TestClass::Add))
             .Register();
 
-        const char* csource;
-        if (!std::filesystem::exists(file)) {
-            GetEntry()->getLogger().error(fmt::format("Failed to load plugin '{}'", file.string()));
-            nl.destroyEngine(val->pluginName);
-            return nullptr;
-        }
-        std::ifstream t(file);
-        std::string   str((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
-        csource = str.c_str();
-        if (csource == nullptr) {
-            GetEntry()->getLogger().error(fmt::format("Failed to load plugin '{}'", file.string()));
-            nl.destroyEngine(val->pluginName);
-            return nullptr;
-        }
+        puerts::DefineClass<TestB>()
+            .Constructor<TestClass*>()
+            .Function("Print", MakeFunction(&TestB::Print))
+            .Method("GetP", MakeFunction(&TestB::GetP))
+            .Register();
 
         {
             // Native new TestClass to ScriptEngine
@@ -242,6 +245,23 @@ endstone::Plugin* JavaScriptPluginLoader::loadPlugin(const fs::path& file) {
                     getNativeTestClass->GetFunction(context).ToLocalChecked()
                 )
                 .Check();
+        }
+
+
+        // 加载文件
+        const char* csource;
+        if (!std::filesystem::exists(file)) {
+            GetEntry()->getLogger().error(fmt::format("Failed to load plugin '{}'", file.string()));
+            nl.destroyEngine(val->pluginName);
+            return nullptr;
+        }
+        std::ifstream t(file);
+        std::string   str((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
+        csource = str.c_str();
+        if (csource == nullptr) {
+            GetEntry()->getLogger().error(fmt::format("Failed to load plugin '{}'", file.string()));
+            nl.destroyEngine(val->pluginName);
+            return nullptr;
         }
 
         // Create a string containing the JavaScript source code.
