@@ -18,6 +18,7 @@
 #include "v8-value.h"
 #include <filesystem>
 #include <stop_token>
+#include <string>
 #include <thread>
 
 
@@ -134,6 +135,14 @@ std::vector<endstone::Plugin*> JavaScriptPluginLoader::loadPlugins(const std::st
     return plugins;
 }
 
+std::string FixWinPath(const std::string& path) {
+    // 将路径中的反斜杠替换为正斜杠
+    std::string fixedPath = path;
+    std::replace(fixedPath.begin(), fixedPath.end(), '\\', '/');
+    return fixedPath;
+}
+
+
 endstone::Plugin* JavaScriptPluginLoader::loadPlugin(const fs::path& file) {
     // NodeJS
     auto& nl  = NodeHelper::getInstance();
@@ -148,19 +157,26 @@ endstone::Plugin* JavaScriptPluginLoader::loadPlugin(const fs::path& file) {
     Isolate*     isolate = val->isolate;
     Environment* env     = val->env;
     {
-        Locker         locker(isolate);                      // 锁定当前线程
-        Isolate::Scope isolate_scope(isolate);               // 设置当前线程的Isolate
-        HandleScope    handle_scope(isolate);                // 设置当前线程的HandleScope
-        Context::Scope context_scope(val->setup->context()); // 设置当前线程的Context
+        Locker         locker(isolate);
+        Isolate::Scope isolate_scope(isolate);
+        HandleScope    handle_scope(isolate);
+        Context::Scope context_scope(val->setup->context());
 
+        // 启用ESM系统
         v8::MaybeLocal<Value> local = node::LoadEnvironment(
             env,
-            "const publicRequire ="
-            "  require('module').createRequire(process.cwd() + '/');"
+            "const publicRequire = require('module').createRequire(process.cwd() + '/');"
             "globalThis.require = publicRequire;"
-            "globalThis.embedVars = { nön_ascıı: '🏳️‍🌈' };"
-            "require('vm').runInThisContext(process.argv[1]);"
+            // 设置模块加载器
+            "import('node:module').then(async (module) => {"
+            "  const { pathToFileURL } = await import('node:url');"
+            "  const filePath = pathToFileURL('"
+                + FixWinPath(file.string())
+                + "').href;"
+                  "  await import(filePath);"
+                  "});"
         );
+
         if (local.IsEmpty()) {
             GetEntry()->getLogger().error(fmt::format("Failed to load plugin '{}'", file.string()));
             nl.destroyEngine(val->pluginName);

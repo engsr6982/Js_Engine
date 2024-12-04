@@ -32,8 +32,11 @@ public:
 
     std::unordered_map<std::string, Engine> mNodeEngines; // 插件名 -> NodeJs引擎
 
-    int const _argc    = 1;
-    char*     _argv[1] = {(char*)"bedrock_server.exe"};
+    int const _argc    = 2;
+    char*     _argv[2] = {
+        (char*)"bedrock_server.exe",
+        (char*)"--inspect-brk=9229"
+    };
 
 public:
     static NodeHelper& getInstance() {

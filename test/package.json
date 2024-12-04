@@ -1,3 +1,4 @@
 {
-    "main": "TestLoader.js"
+    "main": "TestLoader.js",
+    "type": "module"
 }
