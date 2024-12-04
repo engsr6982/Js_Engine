@@ -4,8 +4,6 @@
 
 
 class Entry : public endstone::Plugin {
-    std::unique_ptr<MultiIsolatePlatform> mPlatform;
-
 public:
     void onLoad() override;
 

@@ -1,6 +1,7 @@
 #include "Entry.h"
 #include "Loader/JavaScriptPlugin.h"
 #include "Loader/JavaScriptPluginLoader.h"
+#include "NodeHelper.h"
 #include "Using.h"
 #include "endstone/detail/logger_factory.h"
 #include "endstone/detail/plugin/plugin_manager.h"
@@ -23,35 +24,15 @@ Entry* GetEntry() { return __Entry; }
 using endstone::detail::EndstoneServer;
 void Entry::onLoad() {
     __Entry = this;
+
+#ifdef DEBUG
+    getLogger().setLevel(endstone::Logger::Debug);
+#endif
+
     getLogger().info("Js_Engine loading...");
+
     getLogger().info("Configuring nodejs...");
-
-    mPlatform = node::MultiIsolatePlatform::Create(4);
-    V8::InitializePlatform(mPlatform.get());
-    V8::SetFlagsFromString("--no-freeze-flags-after-init"); // 禁止在初始化后修改标志
-    V8::Initialize();
-
-    static int               argc   = 1;
-    static char*             argv[] = {(char*)"bedrock_server.exe", nullptr}; // 至少需要程序名
-    auto                     u_argv = uv_setup_args(argc, argv);
-    std::vector<std::string> args(argv, u_argv + argc);
-    auto                     res = node::InitializeOncePerProcess(
-        args,
-        {
-            node::ProcessInitializationFlags::kNoDefaultSignalHandling, // 不注册默认信号处理器
-            node::ProcessInitializationFlags::kNoStdioInitialization,     // 不初始化标准IO
-            node::ProcessInitializationFlags::kNoInitializeV8,            // 不初始化 V8
-            node::ProcessInitializationFlags::kNoInitializeNodeV8Platform // 自己管理V8平台
-        }
-    );
-    if (res->exit_code() != 0) {
-        for (std::string const& err : res->errors()) {
-            getLogger().error(err);
-        }
-        getLogger().error("Failed to initialize nodejs, exiting...");
-        exit(res->exit_code()); // 退出程序
-    }
-
+    jse::NodeHelper::getInstance().initNodeJs();
 
     getLogger().info("Loading javascript plugin...");
     auto loader = std::make_unique<jse::JavaScriptPluginLoader>(getServer());
@@ -86,9 +67,7 @@ void Entry::onEnable() { getLogger().info("Js_Engine enabled"); }
 void Entry::onDisable() {
     __Entry = nullptr;
 
-    node::TearDownOncePerProcess(); // 清理nodejs
-    V8::Dispose();                  // 清理v8
-    V8::DisposePlatform();          // 清理platform
+    jse::NodeHelper::getInstance().destroyNodeJs();
 
     getLogger().info("Js_Engine disabled");
 }

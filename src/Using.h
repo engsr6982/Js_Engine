@@ -4,6 +4,7 @@
 #include "CppObjectMapper.h"
 #include "node.h"
 #include "uv.h"
+
 using node::CommonEnvironmentSetup;
 using node::Environment;
 using node::MultiIsolatePlatform;

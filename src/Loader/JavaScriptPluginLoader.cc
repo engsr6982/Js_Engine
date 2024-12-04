@@ -1,11 +1,43 @@
 #include "JavaScriptPluginLoader.h"
+#include "CppObjectMapper.h"
+#include "DataTransfer.h"
 #include "Entry.h"
 #include "JavaScriptPlugin.h"
+#include "NodeHelper.h"
 #include "endstone/detail/server.h"
 #include "fmt/format.h"
 #include "nlohmann/json.hpp"
 #include "nlohmann/json_fwd.hpp"
+#include "node.h"
+#include "uv.h"
+#include "v8-context.h"
+#include "v8-isolate.h"
+#include "v8-local-handle.h"
+#include "v8-locker.h"
+#include "v8-value.h"
 #include <filesystem>
+#include <stop_token>
+#include <thread>
+
+
+class TestClass {
+public:
+    TestClass(int p) {
+        std::cout << "TestClass(" << p << ")" << std::endl;
+        X = p;
+    }
+
+    static void Print(std::string msg) { std::cout << msg << std::endl; }
+
+    int Add(int a, int b) {
+        std::cout << "Add(" << a << "," << b << ")" << std::endl;
+        return a + b;
+    }
+
+    int X;
+};
+
+UsingCppType(TestClass);
 
 
 namespace jse {
@@ -23,18 +55,22 @@ std::vector<endstone::Plugin*> JavaScriptPluginLoader::loadPlugins(const std::st
             return plugins;
         }
 
-        auto dirs = fs::recursive_directory_iterator(dir);
+        auto dirs = fs::directory_iterator(dir);
         for (const auto& entry : dirs) {
             // find package.json
-            if (entry.path().filename() != "package.json") {
+            if (!entry.is_directory()) {
+                continue;
+            }
+            fs::path packageJsonPath = entry.path() / "package.json";
+            if (!fs::exists(packageJsonPath)) {
+                GetEntry()->getLogger().debug(fmt::format("Skipping non-package.json file: {}", entry.path()));
                 continue;
             }
 
             // load package.json
             try {
-                nlohmann::json package;
-                std::ifstream  file(entry.path());
-                file >> package;
+                std::ifstream file(packageJsonPath);
+                auto          package = nlohmann::json::parse(file);
                 file.close();
 
                 // try to load plugin
@@ -73,7 +109,6 @@ std::vector<endstone::Plugin*> JavaScriptPluginLoader::loadPlugins(const std::st
             }
         }
 
-
     } catch (std::exception& e) {
         GetEntry()->getLogger().error(
             fmt::format("Error occurred while loading plugins from '{}': {}", directory, e.what())
@@ -88,45 +123,148 @@ std::vector<endstone::Plugin*> JavaScriptPluginLoader::loadPlugins(const std::st
 }
 
 endstone::Plugin* JavaScriptPluginLoader::loadPlugin(const fs::path& file) {
-    // try {
-    //     // 创建新的JS引擎实例
-    //     auto& engineManager = EngineManager::getInstance();
-    //     auto* engine        = engineManager.createEngine();
-    //     if (!engine) {
-    //         GetEntry()->getLogger().error(fmt::format("Failed to create JS engine for plugin: {}",
-    //         file.string())); return nullptr;
-    //     }
-    //     EngineScope scope(engine); // 进入引擎作用域
-    //     auto        data            = ENGINE_SELF_DATA();
-    //     data->mJSE_Plugin.mFileName = fs::path(file).filename().string(); // 设置插件文件名
-
-    //     // 加载JS文件
-    //     engine->loadFile(file.string());
-
-    //     // 创建插件实例
-    //     auto* plugin = new JavaScriptPlugin(
-    //         data->mEngineId,
-    //         data->mJSE_Plugin.getName(),
-    //         data->mJSE_Plugin.getVersion(),
-    //         data->mJSE_Plugin.getDescription()
-    //     );
-    //     data->mPlugin = plugin; // 将插件实例保存到引擎数据中
-
-    //     plugin->onLoad(); // 调用插件的onLoad回调
-
-    //     return plugin;
-    // } catch (const script::Exception& e) {
-    //     GetEntry()->getLogger().error(fmt::format("Failed to load plugin '{}': {}", file.string(),
-    //     e.stacktrace())); return nullptr;
-    // } catch (const std::exception& e) {
-    //     GetEntry()->getLogger().error(fmt::format("Failed to load plugin '{}': {}", file.string(), e.what()));
-    //     return nullptr;
-    // } catch (...) {
-    //     GetEntry()->getLogger().error(fmt::format("Failed to load plugin '{}': Unknown error", file.string()));
-    //     return nullptr;
-    // }
-
     // NodeJS
+    auto& nl  = NodeHelper::getInstance();
+    auto  val = nl.newEngine(file.string());
+    if (!val) {
+        GetEntry()->getLogger().error(fmt::format("Failed to load plugin '{}'", file.string()));
+        return nullptr;
+    }
+    GetEntry()->getLogger().debug(fmt::format("Loaded plugin '{}'", file.string()));
+
+
+    Isolate*     isolate = val->isolate;
+    Environment* env     = val->env;
+    {
+        Locker         locker(isolate);                      // 锁定当前线程
+        Isolate::Scope isolate_scope(isolate);               // 设置当前线程的Isolate
+        HandleScope    handle_scope(isolate);                // 设置当前线程的HandleScope
+        Context::Scope context_scope(val->setup->context()); // 设置当前线程的Context
+
+        v8::MaybeLocal<Value> local = node::LoadEnvironment(
+            env,
+            "const publicRequire ="
+            "  require('module').createRequire(process.cwd() + '/');"
+            "globalThis.require = publicRequire;"
+            "globalThis.embedVars = { nön_ascıı: '🏳️‍🌈' };"
+            "require('vm').runInThisContext(process.argv[1]);"
+        );
+        if (local.IsEmpty()) {
+            GetEntry()->getLogger().error(fmt::format("Failed to load plugin '{}'", file.string()));
+            nl.destroyEngine(val->pluginName);
+            return nullptr;
+        }
+
+        int exit_code = node::SpinEventLoop(env).FromMaybe(1);
+
+        auto                     context = val->setup->context();
+        puerts::FCppObjectMapper cppObjectMapper;
+        cppObjectMapper.Initialize(isolate, context);
+        isolate->SetData(MAPPER_ISOLATE_DATA_POS, static_cast<puerts::ICppObjectMapper*>(&cppObjectMapper));
+
+        context->Global()
+            ->Set(
+                context,
+                v8::String::NewFromUtf8(isolate, "loadCppType").ToLocalChecked(),
+                v8::FunctionTemplate::New(
+                    isolate,
+                    [](const v8::FunctionCallbackInfo<v8::Value>& info) {
+                        auto pom =
+                            static_cast<puerts::FCppObjectMapper*>((v8::Local<v8::External>::Cast(info.Data()))->Value()
+                            );
+                        pom->LoadCppType(info);
+                    },
+                    v8::External::New(isolate, &cppObjectMapper)
+                )
+                    ->GetFunction(context)
+                    .ToLocalChecked()
+            )
+            .Check();
+
+        puerts::DefineClass<TestClass>()
+            .Constructor<int>()
+            .Function("Print", MakeFunction(&TestClass::Print))
+            .Property("X", MakeProperty(&TestClass::X))
+            .Method("Add", MakeFunction(&TestClass::Add))
+            .Register();
+
+        const char* csource;
+        if (!std::filesystem::exists(file)) {
+            GetEntry()->getLogger().error(fmt::format("Failed to load plugin '{}'", file.string()));
+            nl.destroyEngine(val->pluginName);
+            return nullptr;
+        }
+        std::ifstream t(file);
+        std::string   str((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
+        csource = str.c_str();
+        if (csource == nullptr) {
+            GetEntry()->getLogger().error(fmt::format("Failed to load plugin '{}'", file.string()));
+            nl.destroyEngine(val->pluginName);
+            return nullptr;
+        }
+
+        {
+            // Native new TestClass to ScriptEngine
+            auto testInstance = new TestClass(42); // 创建实例
+
+            // 将C++对象包装为JS对象
+            auto jsTestInstance = puerts::DataTransfer::FindOrAddCData(
+                isolate,
+                context,
+                puerts::StaticTypeId<TestClass>::get(),
+                testInstance,
+                false // 这里false表示不是指针传递
+            );
+
+            // 创建一个全局函数来获取这个实例
+            auto getNativeTestClass = v8::FunctionTemplate::New(
+                isolate,
+                [](const v8::FunctionCallbackInfo<v8::Value>& info) {
+                    auto isolate      = info.GetIsolate();
+                    auto context      = isolate->GetCurrentContext();
+                    auto testInstance = puerts::DataTransfer::FindOrAddCData(
+                        isolate,
+                        context,
+                        puerts::StaticTypeId<TestClass>::get(),
+                        info.Data().As<v8::External>()->Value(),
+                        false
+                    );
+                    info.GetReturnValue().Set(testInstance);
+                },
+                v8::External::New(isolate, testInstance) // 将实例作为函数数据传递
+            );
+
+            // 将函数设置为全局对象的属性
+            context->Global()
+                ->Set(
+                    context,
+                    v8::String::NewFromUtf8(isolate, "getNativeTestClass").ToLocalChecked(),
+                    getNativeTestClass->GetFunction(context).ToLocalChecked()
+                )
+                .Check();
+        }
+
+        // Create a string containing the JavaScript source code.
+        v8::Local<v8::String> source = v8::String::NewFromUtf8(isolate, csource).ToLocalChecked();
+
+        // Compile the source code.
+        v8::Local<v8::Script> script = v8::Script::Compile(context, source).ToLocalChecked();
+
+        // Run the script
+        auto _unused = script->Run(context);
+
+        // cppObjectMapper.UnInitialize(isolate);
+
+        // node::Stop(env);
+        val->uvThread = std::jthread([isolate, event_loop{val->setup->event_loop()}](std::stop_token stop_token) {
+            Locker         lock{isolate};
+            Isolate::Scope isolate_scope{isolate};
+            while (!stop_token.stop_requested()) {
+                uv_run(event_loop, UV_RUN_NOWAIT);
+                std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 等待100毫秒
+            }
+        });
+    }
 
 
     return nullptr;

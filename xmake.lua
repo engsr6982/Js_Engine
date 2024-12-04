@@ -21,7 +21,7 @@ target("Js_Engine")
     add_cxflags(
         "/EHa",
         "/utf-8",
-        "/W4",
+        -- "/W4",
         "/sdl"
     )
     add_defines(
@@ -65,6 +65,11 @@ target("Js_Engine")
     add_includedirs(
         "node_modules/puerts/puerts_libs/include",
         "node_modules/puerts/src"
+    )
+    add_files(
+        "node_modules/puerts/src/CppObjectMapper.cpp",
+        "node_modules/puerts/src/JSClassRegister.cpp",
+        "node_modules/puerts/src/DataTransfer.cpp"
     )
     add_links("node_modules/puerts/puerts_libs/src/*.c")
 
