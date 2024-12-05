@@ -63,15 +63,15 @@ target("Js_Engine")
     )
     -- Puerts
     add_includedirs(
-        "node_modules/puerts/puerts_libs/include",
-        "node_modules/puerts/src"
+        "third-party/puerts/puerts_libs/include",
+        "third-party/puerts/src"
     )
     add_files(
-        "node_modules/puerts/src/CppObjectMapper.cpp",
-        "node_modules/puerts/src/JSClassRegister.cpp",
-        "node_modules/puerts/src/DataTransfer.cpp"
+        "third-party/puerts/src/CppObjectMapper.cpp",
+        "third-party/puerts/src/JSClassRegister.cpp",
+        "third-party/puerts/src/DataTransfer.cpp"
     )
-    add_links("node_modules/puerts/puerts_libs/src/*.c")
+    add_links("third-party/puerts/puerts_libs/src/*.c")
     add_defines("PES_EXTENSION_WITH_V8_API") -- 提高性能
 
     if is_mode("debug") then
