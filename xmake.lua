@@ -72,6 +72,7 @@ target("Js_Engine")
         "node_modules/puerts/src/DataTransfer.cpp"
     )
     add_links("node_modules/puerts/puerts_libs/src/*.c")
+    add_defines("PES_EXTENSION_WITH_V8_API") -- 提高性能
 
     if is_mode("debug") then
         add_defines("DEBUG")

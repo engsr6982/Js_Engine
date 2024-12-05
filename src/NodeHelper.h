@@ -35,7 +35,8 @@ public:
     int const _argc    = 2;
     char*     _argv[2] = {
         (char*)"bedrock_server.exe",
-        (char*)"--inspect-brk=9229"
+        (char*)"",
+        // (char*)"--inspect-brk=9229"
     };
 
 public:

@@ -1,10 +1,12 @@
 #include "JavaScriptPluginLoader.h"
+#include "Binding.hpp"
 #include "CppObjectMapper.h"
 #include "DataTransfer.h"
 #include "Entry.h"
 #include "JavaScriptPlugin.h"
 #include "NodeHelper.h"
 #include "ScriptBackend.hpp"
+#include "TypeInfo.hpp"
 #include "endstone/detail/server.h"
 #include "fmt/format.h"
 #include "nlohmann/json.hpp"
@@ -17,9 +19,11 @@
 #include "v8-locker.h"
 #include "v8-value.h"
 #include <filesystem>
+#include <memory>
 #include <stop_token>
 #include <string>
 #include <thread>
+#include <vector>
 
 
 class TestClass {
@@ -49,6 +53,66 @@ public:
 
     TestClass* GetP() { return p; }
 };
+
+namespace puerts {
+template <typename T>
+struct ScriptTypeName<std::vector<T*>> {
+    static constexpr auto value() { return internal::Literal("Array"); }
+};
+
+template <typename T>
+struct ScriptTypeName<std::vector<T*>*> {
+    static constexpr auto value() { return internal::Literal("Array"); }
+};
+
+// 实现Converter
+namespace v8_impl {
+template <typename T>
+struct Converter<std::vector<T*>> {
+    static v8::Local<v8::Value> toScript(v8::Local<v8::Context> context, const std::vector<T*>& vec) {
+        v8::Isolate*         isolate = context->GetIsolate();
+        v8::Local<v8::Array> jsArray = v8::Array::New(isolate, vec.size());
+        for (size_t i = 0; i < vec.size(); ++i) {
+            jsArray->Set(context, i, Converter<T*>::toScript(context, vec[i])).Check();
+        }
+        return jsArray;
+    }
+
+    static std::vector<T*> toCpp(v8::Local<v8::Context> context, v8::Local<v8::Value> value) {
+        std::vector<T*> vec;
+        if (value->IsArray()) {
+            v8::Local<v8::Array> jsArray = value.As<v8::Array>();
+            for (uint32_t i = 0; i < jsArray->Length(); ++i) {
+                vec.push_back(Converter<T*>::toCpp(context, jsArray->Get(context, i).ToLocalChecked()));
+            }
+        }
+        return vec;
+    }
+};
+
+template <typename T>
+struct Converter<std::vector<T*>*> {
+    static v8::Local<v8::Value> toScript(v8::Local<v8::Context> context, std::vector<T*>* vec) {
+        if (!vec) return v8::Null(context->GetIsolate());
+        return Converter<std::vector<T*>>::toScript(context, *vec);
+    }
+
+    static std::vector<T*>* toCpp(v8::Local<v8::Context> context, v8::Local<v8::Value> value) {
+        if (value->IsNull() || value->IsUndefined()) return nullptr;
+        auto result = new std::vector<T*>(Converter<std::vector<T*>>::toCpp(context, value));
+        return result;
+    }
+};
+} // namespace v8_impl
+} // namespace puerts
+template <typename T>
+v8::Local<v8::Value> Convert(Isolate* isolate, v8::Local<v8::Context> context, T* value) {
+    return puerts::DataTransfer::FindOrAddCData(isolate, context, puerts::StaticTypeId<T>::get(), value, false);
+}
+template <typename T>
+v8::Local<v8::Value> Convert(Isolate* isolate, v8::Local<v8::Context> context, T& value) {
+    return puerts::DataTransfer::FindOrAddCData(isolate, context, puerts::StaticTypeId<T>::get(), value, false);
+}
 
 UsingCppType(TestClass);
 UsingCppType(TestB);
@@ -162,34 +226,14 @@ endstone::Plugin* JavaScriptPluginLoader::loadPlugin(const fs::path& file) {
         HandleScope    handle_scope(isolate);
         Context::Scope context_scope(val->setup->context());
 
-        // 启用ESM系统
-        v8::MaybeLocal<Value> local = node::LoadEnvironment(
-            env,
-            "const publicRequire = require('module').createRequire(process.cwd() + '/');"
-            "globalThis.require = publicRequire;"
-            // 设置模块加载器
-            "import('node:module').then(async (module) => {"
-            "  const { pathToFileURL } = await import('node:url');"
-            "  const filePath = pathToFileURL('"
-                + FixWinPath(file.string())
-                + "').href;"
-                  "  await import(filePath);"
-                  "});"
-        );
+        auto context = val->setup->context();
 
-        if (local.IsEmpty()) {
-            GetEntry()->getLogger().error(fmt::format("Failed to load plugin '{}'", file.string()));
-            nl.destroyEngine(val->pluginName);
-            return nullptr;
-        }
+        // 先设置好所有的API绑定
+        auto cppObjectMapper = new puerts::FCppObjectMapper();
+        cppObjectMapper->Initialize(isolate, context);
+        isolate->SetData(MAPPER_ISOLATE_DATA_POS, static_cast<puerts::ICppObjectMapper*>(cppObjectMapper));
 
-        int exit_code = node::SpinEventLoop(env).FromMaybe(1);
-
-        auto                     context = val->setup->context();
-        puerts::FCppObjectMapper cppObjectMapper;
-        cppObjectMapper.Initialize(isolate, context);
-        isolate->SetData(MAPPER_ISOLATE_DATA_POS, static_cast<puerts::ICppObjectMapper*>(&cppObjectMapper));
-
+        // 绑定loadCppType
         context->Global()
             ->Set(
                 context,
@@ -209,6 +253,7 @@ endstone::Plugin* JavaScriptPluginLoader::loadPlugin(const fs::path& file) {
             )
             .Check();
 
+        // 注册类型
         puerts::DefineClass<TestClass>()
             .Constructor<int>()
             .Function("Print", MakeFunction(&TestClass::Print))
@@ -222,47 +267,31 @@ endstone::Plugin* JavaScriptPluginLoader::loadPlugin(const fs::path& file) {
             .Method("GetP", MakeFunction(&TestB::GetP))
             .Register();
 
-        {
-            // Native new TestClass to ScriptEngine
-            auto testInstance = new TestClass(42); // 创建实例
 
-            // 将C++对象包装为JS对象
-            auto jsTestInstance = puerts::DataTransfer::FindOrAddCData(
-                isolate,
-                context,
-                puerts::StaticTypeId<TestClass>::get(),
-                testInstance,
-                false // 这里false表示不是指针传递
-            );
+        // 然后启动ESM系统
+        // clang-format off
+        v8::MaybeLocal<Value> local = node::LoadEnvironment(
+            env,
+            R"(
+                const publicRequire = require('module').createRequire(process.cwd() + '/');
+                globalThis.require = publicRequire;
 
-            // 创建一个全局函数来获取这个实例
-            auto getNativeTestClass = v8::FunctionTemplate::New(
-                isolate,
-                [](const v8::FunctionCallbackInfo<v8::Value>& info) {
-                    auto isolate      = info.GetIsolate();
-                    auto context      = isolate->GetCurrentContext();
-                    auto testInstance = puerts::DataTransfer::FindOrAddCData(
-                        isolate,
-                        context,
-                        puerts::StaticTypeId<TestClass>::get(),
-                        info.Data().As<v8::External>()->Value(),
-                        false
-                    );
-                    info.GetReturnValue().Set(testInstance);
-                },
-                v8::External::New(isolate, testInstance) // 将实例作为函数数据传递
-            );
+                import('node:module').then(async (module) => {
+                    const { pathToFileURL } = await import('node:url');
+                    const filePath = pathToFileURL(')" + FixWinPath(file.string()) + R"(').href;
+                    await import(filePath);
+                });
+            )"
+        );
+        // clang-format on
 
-            // 将函数设置为全局对象的属性
-            context->Global()
-                ->Set(
-                    context,
-                    v8::String::NewFromUtf8(isolate, "getNativeTestClass").ToLocalChecked(),
-                    getNativeTestClass->GetFunction(context).ToLocalChecked()
-                )
-                .Check();
+        if (local.IsEmpty()) {
+            GetEntry()->getLogger().error(fmt::format("Failed to load plugin '{}'", file.string()));
+            nl.destroyEngine(val->pluginName);
+            return nullptr;
         }
 
+        int exit_code = node::SpinEventLoop(env).FromMaybe(1);
 
         // 加载文件
         const char* csource;

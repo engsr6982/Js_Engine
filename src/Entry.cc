@@ -10,6 +10,7 @@
 #include "node.h"
 #include <filesystem>
 #include <memory>
+#include <thread>
 #include <utility>
 
 
@@ -27,8 +28,9 @@ void Entry::onLoad() {
 
 #ifdef DEBUG
     getLogger().setLevel(endstone::Logger::Debug);
+    getLogger().info("Waiting for VC debugger attach...");
+    std::this_thread::sleep_for(std::chrono::seconds(10));
 #endif
-
     getLogger().info("Js_Engine loading...");
 
     getLogger().info("Configuring nodejs...");
