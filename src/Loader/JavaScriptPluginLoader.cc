@@ -233,6 +233,47 @@ endstone::Plugin* JavaScriptPluginLoader::loadPlugin(const fs::path& file) {
         cppObjectMapper->Initialize(isolate, context);
         isolate->SetData(MAPPER_ISOLATE_DATA_POS, static_cast<puerts::ICppObjectMapper*>(cppObjectMapper));
 
+        {
+            // Native new TestClass to ScriptEngine
+            auto testInstance = new TestClass(42); // 创建实例
+
+            // 将C++对象包装为JS对象
+            auto jsTestInstance = puerts::DataTransfer::FindOrAddCData(
+                isolate,
+                context,
+                puerts::StaticTypeId<TestClass>::get(),
+                testInstance,
+                false // 这里false表示不是指针传递
+            );
+
+            // 创建一个全局函数来获取这个实例
+            auto getNativeTestClass = v8::FunctionTemplate::New(
+                isolate,
+                [](const v8::FunctionCallbackInfo<v8::Value>& info) {
+                    auto isolate      = info.GetIsolate();
+                    auto context      = isolate->GetCurrentContext();
+                    auto testInstance = puerts::DataTransfer::FindOrAddCData(
+                        isolate,
+                        context,
+                        puerts::StaticTypeId<TestClass>::get(),
+                        info.Data().As<v8::External>()->Value(),
+                        false
+                    );
+                    info.GetReturnValue().Set(testInstance);
+                },
+                v8::External::New(isolate, testInstance) // 将实例作为函数数据传递
+            );
+
+            // 将函数设置为全局对象的属性
+            context->Global()
+                ->Set(
+                    context,
+                    v8::String::NewFromUtf8(isolate, "getNativeTestClass").ToLocalChecked(),
+                    getNativeTestClass->GetFunction(context).ToLocalChecked()
+                )
+                .Check();
+        }
+
         // 绑定loadCppType
         context->Global()
             ->Set(
@@ -246,7 +287,7 @@ endstone::Plugin* JavaScriptPluginLoader::loadPlugin(const fs::path& file) {
                             );
                         pom->LoadCppType(info);
                     },
-                    v8::External::New(isolate, &cppObjectMapper)
+                    v8::External::New(isolate, cppObjectMapper)
                 )
                     ->GetFunction(context)
                     .ToLocalChecked()
