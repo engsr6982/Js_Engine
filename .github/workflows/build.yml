@@ -35,9 +35,7 @@ jobs:
       - name: Apply Patch
         run: |
           cd build/_deps/endstone-src
-          ls -la ../../patch || true
-          pwd
-          git apply ../../patch/0001-fix-patch-to-cxx20-and-use-xmake-toolchain.patch
+          git apply ${{ github.workspace }}/patch/0001-fix-patch-to-cxx20-and-use-xmake-toolchain.patch
 
       - uses: xmake-io/github-action-setup-xmake@v1
         # with:
