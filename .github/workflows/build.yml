@@ -26,11 +26,11 @@ jobs:
         with:
           fetch-depth: 0
           repository: EndstoneMC/endstone
-          path: build/_deps/
+          path: build/_deps/endstone-src
 
-      - run: |
-          cd build/_deps
-          mv endstone endstone-src
+      # - run: |
+      #     cd build/_deps
+      #     mv endstone endstone-src
 
       - name: Apply Patch
         run: |
