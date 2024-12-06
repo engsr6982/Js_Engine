@@ -35,7 +35,7 @@ jobs:
       - name: Apply Patch
         run: |
           cd build/_deps/endstone-src
-          git apply ../../../patch/0001-fix-patch-to-cxx20-and-use-xmake-toolchain.patch
+          git apply ../../patch/0001-fix-patch-to-cxx20-and-use-xmake-toolchain.patch
 
       - uses: xmake-io/github-action-setup-xmake@v1
         # with:
