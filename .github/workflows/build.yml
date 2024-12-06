@@ -1,0 +1,57 @@
+on:
+  pull_request:
+    branches:
+      - dev
+    path:
+      - "xmake.lua"
+      - "src/"
+  push:
+    branches:
+      - dev
+    path:
+      - "xmake.lua"
+      - "src/"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout EndStone repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          repository: EndstoneMC/endstone
+          path: build/_deps/
+
+      - run: |
+          cd build/_deps
+          mv endstone endstone-src
+
+      - name: Apply Patch
+        run: |
+          cd build/_deps/endstone-src
+          git apply ../../../patch/0001-fix-patch-to-cxx20-and-use-xmake-toolchain.patch
+
+      - uses: xmake-io/github-action-setup-xmake@v1
+        # with:
+        #   xmake-version: branch@master
+
+      - run: |
+          xmake repo -u
+
+      - run: |
+          xmake f -a x64 -m release -p windows -v -y
+
+      - run: |
+          xmake -v -y
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.repository.name }}-windows-x64-${{ github.sha }}
+          path: |
+            bin/
