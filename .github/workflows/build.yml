@@ -28,9 +28,13 @@ jobs:
           repository: EndstoneMC/endstone
           path: build/_deps/endstone-src
 
-      # - run: |
-      #     cd build/_deps
-      #     mv endstone endstone-src
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/.xmake
+          key: xmake-${{ hashFiles('xmake.lua') }}
+          restore-keys: |
+            xmake-
 
       - name: Apply Patch
         shell: pwsh

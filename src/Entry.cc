@@ -14,7 +14,7 @@
 #include <utility>
 
 
-ENDSTONE_PLUGIN("Js_Engine", "0.1.0", Entry) {
+ENDSTONE_PLUGIN("js_engine", "0.1.0", Entry) {
     description  = "JavaScript Engine";
     authors      = {"engsr6982"};
     contributors = {"engsr6982"};

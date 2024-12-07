@@ -82,6 +82,8 @@ target("Js_Engine")
         add_defines("DEBUG")
     end
 
+    set_basename("js_engine")
+
     after_build(function(target)
         local output_dir = path.join(os.projectdir(), "bin")
 
@@ -89,10 +91,10 @@ target("Js_Engine")
         -- if os.isdir(output_dir) then os.rm(output_dir) end
 
         -- dll复制
-        os.cp(target:targetfile(), path.join(output_dir, target:name() .. ".dll"))
+        os.cp(target:targetfile(), path.join(output_dir, target:basename() .. ".dll"))
 
         -- pdb复制
-        local pdb_path = path.join(output_dir, target:name() .. ".pdb")
+        local pdb_path = path.join(output_dir, target:basename() .. ".pdb")
         if os.isfile(target:symbolfile()) then 
             os.cp(target:symbolfile(), pdb_path) 
         end

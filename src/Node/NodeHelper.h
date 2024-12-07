@@ -1,4 +1,5 @@
 #pragma once
+#include "API/JSEAPI.h"
 #include "Entry.h"
 #include "Loader/JavaScriptPlugin.h"
 #include "Node/UsingV8.h"
@@ -178,6 +179,16 @@ public:
                     .Check();
 
                 // TODO: bind native API
+                context()
+                    ->Global()
+                    ->Set(
+                        context(),
+                        v8::String::NewFromUtf8(isolate(), "register_plugin").ToLocalChecked(),
+                        v8::FunctionTemplate::New(isolate(), JSEAPI::register_plugin)
+                            ->GetFunction(context())
+                            .ToLocalChecked()
+                    )
+                    .Check();
 
 
                 return true;

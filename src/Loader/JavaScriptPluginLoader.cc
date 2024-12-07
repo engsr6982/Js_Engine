@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 JavaScriptPluginLoader::JavaScriptPluginLoader(endstone::Server& server) : PluginLoader(server) {}
 
 std::vector<std::string> JavaScriptPluginLoader::getPluginFileFilters() const {
-    return {}; // 因为 NodeJs 插件为 floder，无需过滤
+    return {".js"}; // 因为 NodeJs 插件为 floder，无需过滤
 }
 
 
